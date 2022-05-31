@@ -1,11 +1,11 @@
 import sys, time, random, json
 from PyQt6.QtWidgets import (QApplication, QWidget, QToolTip, 
 QPushButton, QHBoxLayout, QVBoxLayout, QLabel, QLineEdit, 
-QCheckBox, QScrollArea, QListWidget)
+QCheckBox, QScrollArea, QListWidget, QFrame)
 from PyQt6.QtGui import QFont
 from PyQt6.QtCore import Qt
 
-from custom_widgets import QCard, Card
+from custom_widgets import QBasicCard, QCard, Card
 
 from pynput import mouse
 from pynput.mouse import Button as Mouse_Button
@@ -138,7 +138,7 @@ class Menu(QWidget):
         self.key_listener.start()
 
         self.setLayout(vbox)
-        self.setGeometry(100, 100, 400, 400)
+        self.setGeometry(100, 100, 600, 400)
         self.setWindowTitle('PyBot')
         self.show()
 
@@ -282,7 +282,12 @@ class Menu(QWidget):
             self.recording = False
             self.mouse_listener.stop()
             # for event in self.mouse_events[:-2]:
-            for event in self.events[:-2]:
+            while True:
+                event = self.events.pop()
+                if event[0] == Card.LEFT_CLICK_PRESS:
+                    break
+                
+            for event in self.events:
                 self.addCard(event[0], event[1], event[2])
             
             self.redisplayCards()
@@ -301,7 +306,10 @@ class Menu(QWidget):
             self.current_time = time.time()
 
     def addCard(self, action, delay, data):
-        card = QCard(self, action, delay, data)
+        if action <= Card.SPECIAL_KEY_RELEASE:
+            card = QBasicCard(self, action, delay, data)
+        else:
+            card = QCard(self, action, delay, data)
         self.cards.append(card)
 
     def play(self):
@@ -313,62 +321,17 @@ class Menu(QWidget):
 
         for i in range(self.repeat):
             for card in self.cards:
-                action = card.action
+                rand_speed_modifier = 1
                 if self.randomize:
                     rand_speed_modifier = random.uniform(1, self.randomizer)
                     if random.random() < 0.5:
                         rand_speed_modifier = 1/rand_speed_modifier
-                else:
-                    rand_speed_modifier = 1
                 wait_time = card.delay / (self.speed * rand_speed_modifier)
                 start_time = time.time()
                 while time.time() - start_time < wait_time:
                     if not self.playing:
                         return
-                if action <= Card.SCROLL: #mouse event
-                    mouse.position = card.data['position']
-                    if action == Card.MOVE:
-                        pass
-                    elif action == Card.LEFT_CLICK_PRESS:
-                        mouse.press(Mouse_Button.left)
-                    elif action == Card.LEFT_CLICK_RELEASE:
-                        mouse.release(Mouse_Button.left)
-                    elif action == Card.RIGHT_CLICK_PRESS:
-                        mouse.press(Mouse_Button.right)
-                    elif action == Card.RIGHT_CLICK_RELEASE:
-                        mouse.release(Mouse_Button.right)
-                    elif action == Card.MIDDLE_CLICK_PRESS:
-                        mouse.press(Mouse_Button.middle)
-                    elif action == Card.MIDDLE_CLICK_RELEASE:
-                        mouse.release(Mouse_Button.middle)
-                    elif action == Card.SCROLL:
-                        (dx, dy) = card.data['movement']
-                        mouse.scroll(dx, dy)
-                elif action <= Card.SPECIAL_KEY_RELEASE: #keyboard event
-                    if action == Card.KEY_PRESS:
-                        keyboard_controller.press(keyboard.KeyCode.from_vk(card.data['vk']))
-                    elif action == Card.KEY_RELEASE:
-                        keyboard_controller.release(keyboard.KeyCode.from_vk(card.data['vk']))
-                    elif action == Card.SPECIAL_KEY_PRESS:
-                        if card.data['is_media'] == True:
-                            media_key = keyboard.KeyCode._from_media(card.data['vk'])
-                            key = keyboard.Key(media_key)
-                            print(f'press: {key}')
-                            keyboard_controller.press(key)
-                        else:
-                            keyboard_controller.press(keyboard.KeyCode.from_vk(card.data['vk']))
-                    elif action == Card.SPECIAL_KEY_RELEASE:
-                        if card.data['is_media'] == True:
-                            media_key = keyboard.KeyCode._from_media(card.data['vk'])
-                            key = keyboard.Key(media_key)
-                            print(f'release : {key}')
-                            keyboard_controller.release(key)
-                        else:
-                            keyboard_controller.release(keyboard.KeyCode.from_vk(card.data['vk']))
-                else: # special events: OCR, etc.
-                    print('Not implemented yet')
-                
-
+                card.play_card(mouse, keyboard_controller)
     
     def cancelCard(self, card):
         if len(self.cards) > 0:
@@ -381,7 +344,7 @@ class Menu(QWidget):
             self.cardLayout.itemAt(i).widget().setParent(None)
 
         for card in self.cards:
-            self.cardLayout.addWidget(card)
+            self.cardLayout.addWidget(card.frame)
 
     def loadFile(self):
         with open(f'./{self.filename}.json', 'r') as file:
@@ -389,8 +352,7 @@ class Menu(QWidget):
             for card_data in cards:
                 [action, delay, data] = card_data
                 action = Card(action)
-                card = QCard(self, action, delay, data)
-                self.cards.append(card)
+                self.addCard(action, delay, data)
 
         self.redisplayCards()
 
